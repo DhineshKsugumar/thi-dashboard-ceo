@@ -1,9 +1,1029 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-  </head>
-  <body>
-    <h2>This is a sample Widget built using Zoho Extension toolkit.</h2>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CEO Overview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0F1117;
+      --card: #161B22;
+      --card-elevated: #1C2128;
+      --primary: #4F8CFF;
+      --secondary: #8A5CF6;
+      --success: #22C55E;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --text-primary: #FFFFFF;
+      --text-secondary: #9CA3AF;
+      --border: rgba(255, 255, 255, 0.06);
+      --glow-blue: rgba(79, 140, 255, 0.4);
+      --glow-violet: rgba(138, 92, 246, 0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .dashboard {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 24px 32px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* 1. Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      background: rgba(22, 27, 34, 0.6);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      transition: all 200ms ease;
+    }
+
+    .header:hover {
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .header-title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .date-filter {
+      padding: 10px 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 200ms ease;
+    }
+
+    .date-filter:hover {
+      border-color: var(--primary);
+      box-shadow: 0 0 20px var(--glow-blue);
+    }
+
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .toggle-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .toggle {
+      width: 40px;
+      height: 22px;
+      background: var(--card-elevated);
+      border-radius: 11px;
+      position: relative;
+      cursor: pointer;
+      transition: all 200ms ease;
+    }
+
+    .toggle.active {
+      background: var(--primary);
+      box-shadow: 0 0 16px var(--glow-blue);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: all 200ms ease;
+    }
+
+    .toggle.active::after {
+      left: 20px;
+    }
+
+    .export-btn {
+      padding: 10px 18px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text-secondary);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 200ms ease;
+    }
+
+    .export-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* 2. Main content grid */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 24px;
+      align-items: stretch;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      min-height: 0;
+    }
+
+    .main-content .graph-card {
+      flex: 1;
+      min-height: 320px;
+    }
+
+    /* Metric cards */
+    .metric-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .metric-card {
+      padding: 20px;
+      background: var(--card);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      transition: all 200ms ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      border-color: rgba(79, 140, 255, 0.2);
+    }
+
+    .metric-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .metric-trend {
+      font-size: 12px;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .metric-trend.up { color: var(--success); }
+    .metric-trend.down { color: var(--danger); }
+
+    /* KPI Graph card */
+    .graph-card {
+      padding: 28px;
+      background: var(--card);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      transition: all 200ms ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .graph-card .graph-title {
+      flex-shrink: 0;
+    }
+
+    .graph-card:hover {
+      transform: scale(1.005);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 80px rgba(79, 140, 255, 0.08);
+    }
+
+    .graph-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 50% 80%, rgba(79, 140, 255, 0.06) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .graph-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: var(--text-primary);
+    }
+
+    .graph-container {
+      flex: 1;
+      min-height: 260px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Sales Rep Ranking sidebar */
+    .sidebar-card {
+      padding: 24px;
+      background: var(--card);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      transition: all 200ms ease;
+    }
+
+    .sidebar-card:hover {
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    }
+
+    .sidebar-card .leaderboard-list {
+      flex: 1;
+    }
+
+    .sidebar-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .leaderboard-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .leaderboard-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      transition: all 200ms ease;
+    }
+
+    .leaderboard-item.top {
+      background: linear-gradient(135deg, rgba(79, 140, 255, 0.15) 0%, rgba(138, 92, 246, 0.08) 100%);
+      border: 1px solid rgba(79, 140, 255, 0.3);
+      box-shadow: 0 0 24px rgba(79, 140, 255, 0.15);
+    }
+
+    .leaderboard-item:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .leaderboard-rank {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      min-width: 24px;
+    }
+
+    .leaderboard-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .leaderboard-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .leaderboard-name {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .leaderboard-value {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .leaderboard-progress {
+      height: 4px;
+      background: var(--card-elevated);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .leaderboard-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      border-radius: 2px;
+      transition: width 400ms ease;
+    }
+
+    .leaderboard-trend {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .leaderboard-trend.up { color: var(--success); }
+    .leaderboard-trend.down { color: var(--danger); }
+
+    /* 4. Capacity + Status cards row */
+    .capacity-filters-row {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .capacity-card {
+      padding: 28px;
+      background: var(--card);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      text-align: center;
+      transition: all 200ms ease;
+    }
+
+    .capacity-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    }
+
+    .capacity-title {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .capacity-chart-wrap {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 16px;
+    }
+
+    .capacity-value {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .capacity-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Status filter cards */
+    .filters-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .filters-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .status-cards {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      flex: 1;
+    }
+
+    .status-card {
+      padding: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 200ms ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .status-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .status-card.active {
+      background: rgba(79, 140, 255, 0.12);
+      border-color: var(--primary);
+      box-shadow: 0 0 24px var(--glow-blue);
+    }
+
+    .status-card-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      text-transform: capitalize;
+    }
+
+    .status-card-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    /* 5. Bottom section */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .table-card {
+      background: var(--card);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      transition: all 200ms ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .table-card .marketing-cards-grid {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .table-card:hover {
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    }
+
+    .table-title {
+      padding: 20px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      padding: 14px 24px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--card-elevated);
+    }
+
+    td {
+      padding: 16px 24px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--border);
+      transition: background 200ms ease;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    tr:nth-child(even) td {
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    tr:nth-child(even):hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Marketing & Partner Summary - card grid */
+    .marketing-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 16px;
+      padding: 24px;
+    }
+
+    .marketing-card {
+      padding: 20px;
+      background: var(--card-elevated);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      transition: all 200ms ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .marketing-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(79, 140, 255, 0.2);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .marketing-card-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .marketing-card-value {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .marketing-card-value.accent-blue { color: var(--primary); }
+    .marketing-card-value.accent-violet { color: var(--secondary); }
+    .marketing-card-value.accent-teal { color: #14B8A6; }
+    .marketing-card-value.accent-green { color: var(--success); }
+
+    .marketing-card-sub {
+      font-size: 12px;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
+    .marketing-card-sub.positive { color: var(--success); }
+    .marketing-card-sub.negative { color: var(--danger); }
+
+    /* Icons - inline SVG */
+    .icon {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    /* Premium animations */
+    @keyframes glow-pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 0.8; }
+    }
+
+    .graph-card::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120%;
+      height: 140%;
+      background: radial-gradient(ellipse at center, rgba(79, 140, 255, 0.08) 0%, transparent 60%);
+      pointer-events: none;
+      animation: glow-pulse 4s ease-in-out infinite;
+    }
+
+    .status-card.active {
+      animation: chip-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes chip-glow {
+      0%, 100% { box-shadow: 0 0 20px var(--glow-blue); }
+      50% { box-shadow: 0 0 28px var(--glow-blue), 0 0 40px rgba(79, 140, 255, 0.2); }
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .metric-cards { grid-template-columns: repeat(2, 1fr); }
+      .bottom-grid { grid-template-columns: 1fr; }
+      .status-cards { grid-template-columns: repeat(3, 1fr); }
+      .marketing-cards-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      .dashboard { padding: 16px; }
+      .header { flex-direction: column; gap: 16px; align-items: stretch; }
+      .metric-cards { grid-template-columns: 1fr; }
+      .capacity-filters-row { grid-template-columns: 1fr; }
+      .status-cards { grid-template-columns: repeat(2, 1fr); }
+      .marketing-cards-grid { grid-template-columns: 1fr; grid-template-rows: unset; }
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <!-- 1. Header -->
+    <header class="header">
+      <h1 class="header-title">CEO Overview</h1>
+      <div class="header-controls">
+        <select class="date-filter">
+          <option>Today</option>
+          <option>This Week</option>
+          <option selected>This Month</option>
+          <option>Custom</option>
+        </select>
+        <div class="toggle-group">
+          <span class="toggle-label">Today Metrics</span>
+          <div class="toggle active" id="todayToggle" role="button" tabindex="0" aria-label="Toggle today metrics"></div>
+        </div>
+        <button class="export-btn">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </header>
+
+    <!-- 2. Main KPI Graph + Sidebar -->
+    <div class="main-grid">
+      <div class="main-content">
+        <!-- Metric summary cards -->
+        <div class="metric-cards">
+          <div class="metric-card">
+            <div class="metric-label">Revenue</div>
+            <div class="metric-value">$124.5K</div>
+            <div class="metric-trend up">↑ 12% vs last month</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Leads</div>
+            <div class="metric-value">342</div>
+            <div class="metric-trend up">↑ 8% vs last month</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Meetings</div>
+            <div class="metric-value">89</div>
+            <div class="metric-trend down">↓ 3% vs last month</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Deals</div>
+            <div class="metric-value">24</div>
+            <div class="metric-trend up">↑ 18% vs last month</div>
+          </div>
+        </div>
+
+        <!-- Main graph -->
+        <div class="graph-card">
+          <div class="graph-title">Current month vs Previous month</div>
+          <div class="graph-container">
+            <canvas id="kpiChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sales Rep Ranking -->
+      <aside class="sidebar-card">
+        <h2 class="sidebar-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+          🏆 Sales Rep Ranking
+        </h2>
+        <div class="leaderboard-list">
+          <div class="leaderboard-item top">
+            <span class="leaderboard-rank">1</span>
+            <div class="leaderboard-avatar">JD</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">James Davis</div>
+              <div class="leaderboard-value">$42K revenue</div>
+              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 95%"></div></div>
+            </div>
+            <span class="leaderboard-trend up">↑</span>
+          </div>
+          <div class="leaderboard-item">
+            <span class="leaderboard-rank">2</span>
+            <div class="leaderboard-avatar">SK</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">Sarah Kim</div>
+              <div class="leaderboard-value">$38K revenue</div>
+              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 82%"></div></div>
+            </div>
+            <span class="leaderboard-trend up">↑</span>
+          </div>
+          <div class="leaderboard-item">
+            <span class="leaderboard-rank">3</span>
+            <div class="leaderboard-avatar">MR</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">Mike Roberts</div>
+              <div class="leaderboard-value">$31K revenue</div>
+              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 68%"></div></div>
+            </div>
+            <span class="leaderboard-trend down">↓</span>
+          </div>
+          <div class="leaderboard-item">
+            <span class="leaderboard-rank">4</span>
+            <div class="leaderboard-avatar">AL</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">Amy Lee</div>
+              <div class="leaderboard-value">$28K revenue</div>
+              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 61%"></div></div>
+            </div>
+            <span class="leaderboard-trend up">↑</span>
+          </div>
+          <div class="leaderboard-item">
+            <span class="leaderboard-rank">5</span>
+            <div class="leaderboard-avatar">TW</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">Tom Wilson</div>
+              <div class="leaderboard-value">$24K revenue</div>
+              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 52%"></div></div>
+            </div>
+            <span class="leaderboard-trend down">↓</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- 4. Capacity + Filters -->
+    <div class="capacity-filters-row">
+      <div class="capacity-card">
+        <div class="capacity-title">Overall Capacity</div>
+        <div class="capacity-chart-wrap">
+          <canvas id="capacityChart"></canvas>
+          <div class="capacity-value" id="capacityValue">78%</div>
+        </div>
+        <div class="capacity-label">Online / Available</div>
+      </div>
+      <div class="filters-section">
+        <span class="filters-label">Status filters</span>
+        <div class="status-cards">
+          <div class="status-card active">
+            <span class="status-card-label">Closed</span>
+            <span class="status-card-value">42</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-label">Contacted</span>
+            <span class="status-card-value">28</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-label">Cancelled</span>
+            <span class="status-card-value">12</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-label">No Show</span>
+            <span class="status-card-value">8</span>
+          </div>
+          <div class="status-card">
+            <span class="status-card-label">Initially</span>
+            <span class="status-card-value">15</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Bottom section -->
+    <div class="bottom-grid">
+      <div class="table-card">
+        <div class="table-title">Brand Performance</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Leads</th>
+                <th>Meetings</th>
+                <th>Deals</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Brand A</td><td>124</td><td>32</td><td>8</td></tr>
+              <tr><td>Brand B</td><td>98</td><td>28</td><td>6</td></tr>
+              <tr><td>Brand C</td><td>76</td><td>18</td><td>5</td></tr>
+              <tr><td>Brand D</td><td>44</td><td>11</td><td>5</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-title">Marketing & Partner Summary</div>
+        <div class="marketing-cards-grid">
+          <div class="marketing-card">
+            <div class="marketing-card-label">Marketing Leads</div>
+            <div class="marketing-card-value accent-blue">198</div>
+            <div class="marketing-card-sub positive">↑ 14% vs last month</div>
+          </div>
+          <div class="marketing-card">
+            <div class="marketing-card-label">Partner Leads</div>
+            <div class="marketing-card-value accent-violet">144</div>
+            <div class="marketing-card-sub positive">↑ 9% vs last month</div>
+          </div>
+          <div class="marketing-card">
+            <div class="marketing-card-label">Meetings</div>
+            <div class="marketing-card-value accent-teal">89</div>
+            <div class="marketing-card-sub positive">↑ 6% vs last month</div>
+          </div>
+          <div class="marketing-card">
+            <div class="marketing-card-label">Deals</div>
+            <div class="marketing-card-value accent-green">24</div>
+            <div class="marketing-card-sub positive">↑ 18% vs last month</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Toggle
+    document.getElementById('todayToggle').addEventListener('click', function() {
+      this.classList.toggle('active');
+    });
+
+    // Status cards
+    document.querySelectorAll('.status-card').forEach(card => {
+      card.addEventListener('click', function() {
+        document.querySelectorAll('.status-card').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+
+    // KPI Line Chart
+    const kpiCtx = document.getElementById('kpiChart').getContext('2d');
+    const gradient = kpiCtx.createLinearGradient(0, 0, 0, 280);
+    gradient.addColorStop(0, 'rgba(79, 140, 255, 0.4)');
+    gradient.addColorStop(0.5, 'rgba(79, 140, 255, 0.1)');
+    gradient.addColorStop(1, 'rgba(79, 140, 255, 0)');
+
+    const days = Array.from({ length: 30 }, (_, i) => `Day ${i + 1}`);
+    const currentMonthData = [12, 18, 22, 28, 35, 42, 48, 55, 62, 58, 65, 72, 78, 85, 82, 88, 92, 95, 98, 102, 108, 112, 118, 115, 120, 125, 130, 128, 132, 138];
+    const previousMonthData = [10, 14, 18, 22, 26, 30, 35, 38, 42, 40, 45, 50, 55, 58, 56, 60, 64, 68, 70, 72, 75, 78, 80, 78, 82, 85, 88, 86, 90, 92];
+
+    new Chart(kpiCtx, {
+      type: 'line',
+      data: {
+        labels: days,
+        datasets: [
+          {
+            label: 'Current month',
+            data: currentMonthData,
+            borderColor: '#4F8CFF',
+            backgroundColor: gradient,
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: '#4F8CFF',
+            pointHoverBorderColor: '#fff',
+            pointHoverBorderWidth: 2,
+          },
+          {
+            label: 'Previous month',
+            data: previousMonthData,
+            borderColor: 'rgba(156, 163, 175, 0.6)',
+            borderDash: [6, 4],
+            borderWidth: 2,
+            fill: false,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: {
+              color: '#9CA3AF',
+              usePointStyle: true,
+              padding: 20,
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(22, 27, 34, 0.95)',
+            titleColor: '#fff',
+            bodyColor: '#9CA3AF',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 12,
+            displayColors: true,
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: { color: '#9CA3AF', maxTicksLimit: 8 }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: { color: '#9CA3AF' }
+          }
+        }
+      }
+    });
+
+    // Capacity Donut Chart
+    const capacityCtx = document.getElementById('capacityChart').getContext('2d');
+    new Chart(capacityCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Online', 'Available'],
+        datasets: [{
+          data: [78, 22],
+          backgroundColor: ['#22C55E', 'rgba(156, 163, 175, 0.3)'],
+          borderWidth: 0,
+          hoverOffset: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(22, 27, 34, 0.95)',
+            titleColor: '#fff',
+            bodyColor: '#9CA3AF',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 12,
+          }
+        }
+      }
+    });
+  </script>
+</body>
 </html>
