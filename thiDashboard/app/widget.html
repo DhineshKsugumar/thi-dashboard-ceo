@@ -803,7 +803,7 @@
     <!-- 4. Capacity + Filters -->
     <div class="capacity-filters-row">
       <div class="capacity-card">
-        <div class="capacity-title">Overall Capacity</div>
+        <div class="capacity-title">Leads Spread</div>
         <div class="capacity-chart-wrap">
           <canvas id="capacityChart"></canvas>
           <div class="capacity-value" id="capacityValue">—</div>
@@ -811,7 +811,7 @@
         <div class="capacity-label">Canvassing / Digital</div>
       </div>
       <div class="filters-section">
-        <span class="filters-label">Status filters</span>
+        <span class="filters-label">Other metrics</span>
         <div class="status-cards">
           <div class="status-card active">
             <span class="status-card-label">Closed</span>
@@ -830,8 +830,8 @@
             <span class="status-card-value" id="statusNoShow">0</span>
           </div>
           <div class="status-card">
-            <span class="status-card-label">Initially</span>
-            <span class="status-card-value" id="statusInitially">0</span>
+            <span class="status-card-label">DNC</span>
+            <span class="status-card-value" id="statusDNC">0</span>
           </div>
         </div>
       </div>
@@ -848,7 +848,7 @@
                 <th>Brand</th>
                 <th>Leads</th>
                 <th>Meetings</th>
-                <th>Deals</th>
+                <th>Contracts</th>
               </tr>
             </thead>
             <tbody id="brandTableBody">
@@ -876,7 +876,7 @@
             <div class="marketing-card-sub positive">↑ vs last period</div>
           </div>
           <div class="marketing-card">
-            <div class="marketing-card-label">Deals</div>
+            <div class="marketing-card-label">Contracts</div>
             <div class="marketing-card-value accent-green" id="marketingDealsVal">0</div>
             <div class="marketing-card-sub positive">↑ vs last period</div>
           </div>

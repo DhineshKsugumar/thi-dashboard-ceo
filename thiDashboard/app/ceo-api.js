@@ -19,7 +19,7 @@
     'Full Demo Financial TD': 'Contacted',
     'Full Demo No Sale': 'Contacted',
     'Meeting Acknowledged': 'Contacted',
-    'Issued Appointment': 'Initially',
+    'Issued Appointment': 'DNC',
     'Customer no show': 'No Show',
     'Cancelled - Rescheduled': 'Cancelled',
     'Cancelled - Not Rescheduled': 'Cancelled',
@@ -30,7 +30,7 @@
     'No Rep Available': 'Cancelled',
     'One Leg': 'Contacted',
     'Can Save': 'Contacted',
-    'None': 'Initially'
+    'None': 'DNC'
   };
 
   function getCSTOffset() {
@@ -305,24 +305,32 @@
 
   async function fetchLeads(start, end, tz) {
     log('fetchLeads START', start, 'to', end);
-    if (!zohoSDKReady || !ZOHO.CRM || !ZOHO.CRM.API) return { count: 0, bySource: {} };
+    if (!zohoSDKReady || !ZOHO.CRM || !ZOHO.CRM.API) return { count: 0, bySource: {}, byBrand: {} };
     var tzStr = tz || '-06:00';
     try {
       // Zoho COQL requires ISO 8601 date format with timezone for Created_Time
       var startDt = start + 'T00:00:00' + tzStr;
       var endDt = end + 'T23:59:59' + tzStr;
-      const q = `select id,Lead_Source from Leads where Created_Time >= '${startDt}' and Created_Time <= '${endDt}'`;
-      const data = await coqlPaginated(q);
+      var data;
+      try {
+        data = await coqlPaginated(`select id,Lead_Source,Brand from Leads where Created_Time >= '${startDt}' and Created_Time <= '${endDt}'`);
+      } catch (e) {
+        data = await coqlPaginated(`select id,Lead_Source from Leads where Created_Time >= '${startDt}' and Created_Time <= '${endDt}'`);
+      }
       const bySource = {};
+      const byBrand = {};
       data.forEach(d => {
         const src = (d.Lead_Source || 'Direct').trim() || 'Direct';
         bySource[src] = (bySource[src] || 0) + 1;
+        var brand = d.Brand && (typeof d.Brand === 'object' ? d.Brand.name : d.Brand);
+        brand = (brand && String(brand).trim()) || 'Other';
+        byBrand[brand] = (byBrand[brand] || 0) + 1;
       });
       log('fetchLeads END count=', data.length, 'bySource=', bySource);
-      return { count: data.length, bySource };
+      return { count: data.length, bySource, byBrand };
     } catch (e) {
       log('fetchLeads ERROR', e.message);
-      return { count: 0, bySource: {} };
+      return { count: 0, bySource: {}, byBrand: {} };
     }
   }
 
@@ -363,11 +371,11 @@
 
 
   function mapStageToStatus(stage) {
-    return STAGE_TO_STATUS[stage] || 'Initially';
+    return STAGE_TO_STATUS[stage] || 'DNC';
   }
 
   function aggregateStatusCounts(byStage) {
-    const statuses = { Closed: 0, Contacted: 0, Cancelled: 0, 'No Show': 0, Initially: 0 };
+    const statuses = { Closed: 0, Contacted: 0, Cancelled: 0, 'No Show': 0, DNC: 0 };
     Object.keys(byStage || {}).forEach(stage => {
       const status = mapStageToStatus(stage);
       if (statuses[status] !== undefined) statuses[status] += byStage[stage];
@@ -468,10 +476,14 @@
         chartData = buildChartData(deals, prevDeals, start, end, todayDay, daysInMonth, prevDaysInMonth);
       }
 
-      // Merge deals into brand performance via Meeting_ID -> Event Brand
+      // Brand Performance: leads, meetings, contracts by brand (filter period)
       const brandPerf = {};
       Object.keys(events.byBrand || {}).forEach(brand => {
-        brandPerf[brand] = { ...events.byBrand[brand], deals: 0 };
+        brandPerf[brand] = { leads: 0, meetings: (events.byBrand[brand] && events.byBrand[brand].meetings) || 0, deals: 0 };
+      });
+      Object.keys(leads.byBrand || {}).forEach(brand => {
+        brandPerf[brand] = brandPerf[brand] || { leads: 0, meetings: 0, deals: 0 };
+        brandPerf[brand].leads = (leads.byBrand[brand] || 0);
       });
       const eventBrandMap = events.meetingIdToBrand || {};
       Object.entries(deals.byMeetingId || {}).forEach(([meetingId, dealCount]) => {
@@ -583,7 +595,7 @@
       setTrend('metricDealsTrend', m.dealPct, m.deals >= m.prevDeals, 'yesterday');
 
       // Status cards
-      const statusIds = { Closed: 'statusClosed', Contacted: 'statusContacted', Cancelled: 'statusCancelled', 'No Show': 'statusNoShow', Initially: 'statusInitially' };
+      const statusIds = { Closed: 'statusClosed', Contacted: 'statusContacted', Cancelled: 'statusCancelled', 'No Show': 'statusNoShow', DNC: 'statusDNC' };
       Object.entries(data.statusCounts).forEach(([status, count]) => {
         const id = statusIds[status];
         if (id) setText(id, count);
@@ -664,10 +676,8 @@
       // LIVE badges
       document.querySelectorAll('.metric-card').forEach(function(card) { addLiveBadge(card, true); });
       addLiveBadge(document.querySelector('.sidebar-card'), true);
-      addLiveBadge(document.querySelector('.filters-section'), true);
+      addLiveBadge(document.querySelector('.capacity-card'), true);
       addLiveBadge(document.querySelector('.graph-card'), true);
-      var mGrid = document.querySelector('.marketing-cards-grid');
-      addLiveBadge(mGrid ? mGrid.closest('.table-card') : null, true);
       var brandTbl = document.getElementById('brandTableBody');
       addLiveBadge(brandTbl ? brandTbl.closest('.table-card') : null, true);
       log('render END');
@@ -703,7 +713,7 @@
         kv['Status - Contacted'] = data.statusCounts.Contacted || 0;
         kv['Status - Cancelled'] = data.statusCounts.Cancelled || 0;
         kv['Status - No Show'] = data.statusCounts['No Show'] || 0;
-        kv['Status - Initially'] = data.statusCounts.Initially || 0;
+        kv['Status - DNC'] = data.statusCounts.DNC || 0;
         kv['Marketing Leads'] = data.marketingSummary.marketingLeads || 0;
         kv['Partner Leads'] = data.marketingSummary.partnerLeads || 0;
         kv['Marketing Meetings'] = data.marketingSummary.meetings || 0;
@@ -720,7 +730,7 @@
           var b = data.brandPerformance[brand];
           kv['Brand ' + brand + ' - Leads'] = b.leads || 0;
           kv['Brand ' + brand + ' - Meetings'] = b.meetings || 0;
-          kv['Brand ' + brand + ' - Deals'] = b.deals || 0;
+          kv['Brand ' + brand + ' - Contracts'] = b.deals || 0;
         });
       } else {
         kv['Revenue'] = document.getElementById('metricRevenue') ? document.getElementById('metricRevenue').textContent : '';
@@ -731,7 +741,7 @@
         kv['Status - Contacted'] = document.getElementById('statusContacted') ? document.getElementById('statusContacted').textContent : '';
         kv['Status - Cancelled'] = document.getElementById('statusCancelled') ? document.getElementById('statusCancelled').textContent : '';
         kv['Status - No Show'] = document.getElementById('statusNoShow') ? document.getElementById('statusNoShow').textContent : '';
-        kv['Status - Initially'] = document.getElementById('statusInitially') ? document.getElementById('statusInitially').textContent : '';
+        kv['Status - DNC'] = document.getElementById('statusDNC') ? document.getElementById('statusDNC').textContent : '';
         kv['Marketing Leads'] = document.getElementById('marketingLeadsVal') ? document.getElementById('marketingLeadsVal').textContent : '';
         kv['Partner Leads'] = document.getElementById('partnerLeadsVal') ? document.getElementById('partnerLeadsVal').textContent : '';
         kv['Meetings'] = document.getElementById('marketingMeetingsVal') ? document.getElementById('marketingMeetingsVal').textContent : '';
