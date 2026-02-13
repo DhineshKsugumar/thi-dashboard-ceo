@@ -1,12 +1,12 @@
 /**
- * CEO Overview Dashboard - Zoho CRM API Integration
+ * THI CEO Overview Dashboard - Zoho CRM API Integration
  * Fetches live data from Leads, Deals, Events modules
  */
 
 (function () {
   'use strict';
 
-  var LOG = '[CEO]';
+  var LOG = '[THI CEO]';
   function log() { console.log.apply(console, [LOG].concat(Array.prototype.slice.call(arguments))); }
 
   let zohoSDKReady = false;
@@ -136,12 +136,13 @@
     }
     // COQL may require WHERE; try Owner (standard) vs Sales_Rep (custom), Closing_Date vs Close_Date
     var queries = [
-      'select id,Amount,Deal_Name,Stage,Sales_Rep,Close_Date,Closing_Date,Created_Time,Modified_Time,Account_Name,Meeting_ID from Deals where Meeting_ID is not null',
-      'select id,Amount,Deal_Name,Stage,Sales_Rep,Close_Date,Created_Time,Modified_Time,Events from Deals where Events is not null',
-      'select id,Amount,Deal_Name,Stage,Sales_Rep,Close_Date,Created_Time,Modified_Time,Meeting_ID from Deals where Meeting_ID is not null',
-      'select id,Amount,Deal_Name,Stage,Owner,Close_Date,Created_Time,Modified_Time from Deals where id is not null',
-      'select id,Amount,Deal_Name,Close_Date,Created_Time,Modified_Time from Deals where id is not null',
-      'select id,Amount,Closing_Date,Created_Time,Modified_Time from Deals where id is not null',
+      'select id,Amount,Deal_Name,Stage,Sales_Rep,Sales_Rep_2,Trainee,Close_Date,Closing_Date,Created_Time,Modified_Time,Account_Name,Meeting_ID,OLD_CRM_ID from Deals where Meeting_ID is not null',
+      'select id,Amount,Deal_Name,Stage,Sales_Rep,Sales_Rep_2,Trainee,Close_Date,Created_Time,Modified_Time,Events,OLD_CRM_ID from Deals where Events is not null',
+      'select id,Amount,Deal_Name,Stage,Sales_Rep,Sales_Rep_2,Trainee,Close_Date,Created_Time,Modified_Time,Meeting_ID,OLD_CRM_ID from Deals where Meeting_ID is not null',
+      'select id,Amount,Deal_Name,Stage,Owner,Sales_Rep,Sales_Rep_2,Trainee,Close_Date,Created_Time,Modified_Time,OLD_CRM_ID from Deals where id is not null',
+      'select id,Amount,Deal_Name,Sales_Rep,Sales_Rep_2,Trainee,Close_Date,Created_Time,Modified_Time,OLD_CRM_ID from Deals where id is not null',
+      'select id,Amount,Sales_Rep,Sales_Rep_2,Trainee,Closing_Date,Created_Time,Modified_Time,OLD_CRM_ID from Deals where id is not null',
+      'select id,Amount,Sales_Rep,Sales_Rep_2,Trainee,Created_Time,Modified_Time,OLD_CRM_ID from Deals where id is not null',
       'select id,Amount,Created_Time,Modified_Time from Deals where id is not null'
     ];
     for (var i = 0; i < queries.length; i++) {
@@ -167,6 +168,26 @@
     return [];
   }
 
+  function getRepName(lookup) {
+    if (!lookup) return null;
+    var name = typeof lookup === 'object' ? (lookup.name || lookup.id) : String(lookup);
+    if (!name || (typeof name === 'string' && name.trim() === '')) return null;
+    return typeof name === 'string' ? name.trim() : String(name);
+  }
+
+  function getDealReps(d) {
+    var reps = [];
+    var names = {};
+    // Sales_Rep, Sales_Rep_2, Trainee - split amount among all involved; Owner as fallback if Sales_Rep empty
+    var lookups = [d.Sales_Rep, d.Sales_Rep_2, d.Trainee];
+    if (!getRepName(d.Sales_Rep)) lookups.push(d.Owner);
+    lookups.forEach(function(lookup) {
+      var n = getRepName(lookup);
+      if (n && !names[n]) { names[n] = true; reps.push(n); }
+    });
+    return reps;
+  }
+
   function parseAmount(val) {
     if (val == null) return 0;
     if (typeof val === 'number' && !isNaN(val)) return val;
@@ -187,36 +208,56 @@
     return s;
   }
 
-  function dealInRange(d, start, end) {
-    var dtStr = getDealDate(d);
+  function getDealCreatedDate(d) {
+    var dt = d.Created_Time;
+    if (!dt) return null;
+    if (typeof dt === 'object' && dt.date) return String(dt.date);
+    var s = String(dt);
+    var m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[0];
+    return s;
+  }
+
+  function isNewCRMDeal(d) {
+    var v = d.OLD_CRM_ID;
+    return v == null || v === '' || (typeof v === 'string' && v.trim() === '');
+  }
+
+  function dealCreatedInRange(d, start, end) {
+    var dtStr = getDealCreatedDate(d);
     if (!dtStr) return false;
     var datePart = dtStr.substring(0, 10);
     return datePart >= start && datePart <= end;
   }
 
   function processDeals(deals, start, end) {
-    log('processDeals START range=', start, 'to', end, 'totalDeals=', deals.length);
+    log('processDeals START range=', start, 'to', end, 'totalDeals=', deals.length, '(use Created_Time, OLD_CRM_ID null/empty)');
     var totalRevenue = 0;
     var byRep = {};
     var byMeetingId = {};
     var byDay = {};
-    var filtered = deals.filter(function(d) { return dealInRange(d, start, end); });
+    var filtered = deals.filter(function(d) {
+      return isNewCRMDeal(d) && dealCreatedInRange(d, start, end);
+    });
     log('processDeals filtered count=', filtered.length);
     if (deals.length > 0 && filtered.length === 0) {
-      log('processDeals WARN: no deals in range. Sample deal dates:', deals.slice(0, 3).map(function(d) {
-        return { date: getDealDate(d), Amount: d.Amount };
+      log('processDeals WARN: no deals in range. Sample:', deals.slice(0, 3).map(function(d) {
+        return { created: getDealCreatedDate(d), OLD_CRM_ID: d.OLD_CRM_ID, Amount: d.Amount };
       }));
     }
     filtered.forEach(function(d) {
       var amt = parseAmount(d.Amount);
       totalRevenue += amt;
-      var repLookup = d.Sales_Rep || d.Owner;
-      var rep = repLookup && (typeof repLookup === 'object' ? repLookup.name : repLookup) || 'Unknown';
-      byRep[rep] = (byRep[rep] || 0) + amt;
+      var reps = getDealReps(d);
+      if (reps.length === 0) reps = ['Unknown'];
+      var share = amt / reps.length;
+      reps.forEach(function(rep) {
+        byRep[rep] = (byRep[rep] || 0) + share;
+      });
       var meetingLookup = d.Meeting_ID || d.Events;
       var mid = meetingLookup && (typeof meetingLookup === 'object' ? meetingLookup.id : meetingLookup);
       if (mid) byMeetingId[mid] = (byMeetingId[mid] || 0) + 1;
-      var dtStr = getDealDate(d);
+      var dtStr = getDealCreatedDate(d);
       if (dtStr) {
         var dayNum = parseInt(dtStr.substring(8, 10), 10);
         if (!isNaN(dayNum) && dayNum >= 1 && dayNum <= 31) byDay[dayNum] = (byDay[dayNum] || 0) + amt;
@@ -226,8 +267,13 @@
     return { totalRevenue, count: filtered.length, byRep, byMeetingId, byDay };
   }
 
+  // Chart: Current month (projected) vs Previous month (actual cumulative)
+  // Both use same filters: Created_Time in range, OLD_CRM_ID null/empty
+  // Current: linear projection from revenue so far (daily rate × day)
+  // Previous: cumulative sum of daily revenue (byDay = amount created each day)
   function buildChartData(dealsCurrent, dealsPrev, start, end, todayDay, daysInMonth, prevDaysInMonth) {
     log('buildChartData START todayDay=', todayDay, 'daysInMonth=', daysInMonth, 'currentRevenue=', dealsCurrent.totalRevenue, 'prevRevenue=', dealsPrev.totalRevenue);
+    log('buildChartData prevMonth byDay (daily amounts):', dealsPrev.byDay ? JSON.stringify(dealsPrev.byDay) : '{}');
     var currentProjected = [];
     var prevCumulative = [];
     var labels = [];
@@ -389,12 +435,29 @@
       log('loadAll current deals revenue=', deals.totalRevenue, 'count=', deals.count);
       log('loadAll prev deals revenue=', prevDeals.totalRevenue, 'count=', prevDeals.count);
 
-      const [leads, prevLeads, events, prevEvents] = await Promise.all([
+      // Top section: Revenue uses date range; Leads/Meetings/Contracts use TODAY vs YESTERDAY
+      var todayStr = getDateInCST(0);
+      var yesterdayStr = getDateInCST(-1);
+      const [leads, prevLeads, events, prevEvents, todayLeads, yesterdayLeads, todayEvents, yesterdayEvents] = await Promise.all([
         fetchLeads(start, end, tz),
         fetchLeads(prevStart, prevEnd, tz),
         fetchEvents(start, end, tz),
-        fetchEvents(prevStart, prevEnd, tz)
+        fetchEvents(prevStart, prevEnd, tz),
+        fetchLeads(todayStr, todayStr, tz),
+        fetchLeads(yesterdayStr, yesterdayStr, tz),
+        fetchEvents(todayStr, todayStr, tz),
+        fetchEvents(yesterdayStr, yesterdayStr, tz)
       ]);
+      var todayContractsCount = allDeals.filter(function(d) {
+        var created = getDealCreatedDate(d);
+        return isNewCRMDeal(d) && created && created.substring(0, 10) === todayStr;
+      }).length;
+      var yesterdayContractsCount = allDeals.filter(function(d) {
+        var created = getDealCreatedDate(d);
+        return isNewCRMDeal(d) && created && created.substring(0, 10) === yesterdayStr;
+      }).length;
+      log('loadAll today metrics: leads=', todayLeads.count, 'meetings=', todayEvents.count, 'contracts=', todayContractsCount);
+      log('loadAll yesterday: leads=', yesterdayLeads.count, 'meetings=', yesterdayEvents.count, 'contracts=', yesterdayContractsCount);
 
       var chartData = null;
       if (filter === 'month') {
@@ -422,15 +485,13 @@
       const revenue = deals.totalRevenue;
       const prevRevenue = prevDeals.totalRevenue;
       const revPct = prevRevenue > 0 ? ((revenue - prevRevenue) / prevRevenue * 100).toFixed(0) : 0;
-      const leadPct = prevLeads.count > 0 ? ((leads.count - prevLeads.count) / prevLeads.count * 100).toFixed(0) : 0;
-      const meetingPct = prevEvents.count > 0 ? ((events.count - prevEvents.count) / prevEvents.count * 100).toFixed(0) : 0;
-      const dealPct = prevDealCount > 0 ? ((dealCount - prevDealCount) / prevDealCount * 100).toFixed(0) : 0;
+      // Top metrics: vs yesterday comparison
+      const leadPct = yesterdayLeads.count > 0 ? ((todayLeads.count - yesterdayLeads.count) / yesterdayLeads.count * 100).toFixed(0) : (todayLeads.count > 0 ? '100' : '0');
+      const meetingPct = yesterdayEvents.count > 0 ? ((todayEvents.count - yesterdayEvents.count) / yesterdayEvents.count * 100).toFixed(0) : (todayEvents.count > 0 ? '100' : '0');
+      const dealPct = yesterdayContractsCount > 0 ? ((todayContractsCount - yesterdayContractsCount) / yesterdayContractsCount * 100).toFixed(0) : (todayContractsCount > 0 ? '100' : '0');
 
-      // Merge Deal + Event revenue by rep for leaderboard
+      // Sales Rep Ranking: same data as Revenue card (deals only, Created_Time in range, OLD_CRM_ID null/empty)
       const repRevenue = { ...deals.byRep };
-      Object.keys(events.byRep || {}).forEach(rep => {
-        repRevenue[rep] = (repRevenue[rep] || 0) + (events.byRep[rep] || 0);
-      });
 
       const leaderboard = Object.entries(repRevenue)
         .filter(([, v]) => v > 0)
@@ -452,7 +513,19 @@
       const marketingLeads = (leads.bySource['Marketing'] || 0) + (leads.bySource['Digital'] || 0);
       const partnerLeads = (leads.bySource['Partner'] || 0) + (leads.bySource['Canvassing'] || 0);
 
-      log('loadAll FINAL metrics revenue=', revenue, 'leads=', leads.count, 'meetings=', events.count, 'deals=', dealCount);
+      // Capacity: Canvassing vs Digital (from leads in selected period)
+      var canvassingCount = 0;
+      Object.keys(leads.bySource || {}).forEach(function(src) {
+        if (src && String(src).toLowerCase().indexOf('canvassing') >= 0) canvassingCount += leads.bySource[src];
+      });
+      var totalLeads = leads.count || 0;
+      var digitalCount = Math.max(0, totalLeads - canvassingCount);
+      var canvassingPct = totalLeads > 0 ? Math.round(canvassingCount / totalLeads * 100) : 50;
+      var digitalPct = totalLeads > 0 ? Math.round(digitalCount / totalLeads * 100) : 50;
+      if (canvassingPct + digitalPct !== 100 && totalLeads > 0) digitalPct = 100 - canvassingPct;
+      log('loadAll capacity: canvassing=', canvassingCount, 'digital=', digitalCount, 'canvassingPct=', canvassingPct);
+
+      log('loadAll FINAL metrics revenue=', revenue, 'leadsToday=', todayLeads.count, 'meetingsToday=', todayEvents.count, 'contractsToday=', todayContractsCount);
       log('loadAll returning');
 
       return {
@@ -460,14 +533,14 @@
           revenue,
           prevRevenue,
           revPct,
-          leads: leads.count,
-          prevLeads: prevLeads.count,
+          leads: todayLeads.count,
+          prevLeads: yesterdayLeads.count,
           leadPct,
-          meetings: events.count,
-          prevMeetings: prevEvents.count,
+          meetings: todayEvents.count,
+          prevMeetings: yesterdayEvents.count,
           meetingPct,
-          deals: dealCount,
-          prevDeals: prevDealCount,
+          deals: todayContractsCount,
+          prevDeals: yesterdayContractsCount,
           dealPct
         },
         leaderboard,
@@ -480,7 +553,8 @@
         },
         brandPerformance: brandPerf,
         dateRange: { start, end },
-        chartData: chartData
+        chartData: chartData,
+        capacity: { canvassing: canvassingCount, digital: digitalCount, total: totalLeads, canvassingPct, digitalPct }
       };
     },
 
@@ -493,21 +567,20 @@
         const el = document.getElementById(id);
         if (el) el.textContent = text;
       };
-      const setTrend = (id, pct, isUp) => {
+      const setTrend = (id, pct, isUp, vsText) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.textContent = (isUp ? '↑ ' : '↓ ') + Math.abs(parseFloat(pct)) + '% vs last period';
+        el.textContent = (isUp ? '↑ ' : '↓ ') + Math.abs(parseFloat(pct)) + '% vs ' + (vsText || 'last period');
         el.className = 'metric-trend ' + (isUp ? 'up' : 'down');
       };
-
       setText('metricRevenue', formatCurrency(m.revenue));
       setTrend('metricRevenueTrend', m.revPct, m.revenue >= m.prevRevenue);
       setText('metricLeads', m.leads);
-      setTrend('metricLeadsTrend', m.leadPct, m.leads >= m.prevLeads);
+      setTrend('metricLeadsTrend', m.leadPct, m.leads >= m.prevLeads, 'yesterday');
       setText('metricMeetings', m.meetings);
-      setTrend('metricMeetingsTrend', m.meetingPct, m.meetings >= m.prevMeetings);
+      setTrend('metricMeetingsTrend', m.meetingPct, m.meetings >= m.prevMeetings, 'yesterday');
       setText('metricDeals', m.deals);
-      setTrend('metricDealsTrend', m.dealPct, m.deals >= m.prevDeals);
+      setTrend('metricDealsTrend', m.dealPct, m.deals >= m.prevDeals, 'yesterday');
 
       // Status cards
       const statusIds = { Closed: 'statusClosed', Contacted: 'statusContacted', Cancelled: 'statusCancelled', 'No Show': 'statusNoShow', Initially: 'statusInitially' };
@@ -565,8 +638,31 @@
         chartHeadline.textContent = 'Current month: projected to $' + (data.chartData.currentProjected || 0).toLocaleString() + ' | Previous month: $' + (data.chartData.previousTotal || 0).toLocaleString() + ' from Deals';
       }
 
+      // Capacity chart: Canvassing vs Digital
+      if (capacityChart && data.capacity) {
+        var cap = data.capacity;
+        var canv = cap.canvassing || 0;
+        var dig = cap.digital || 0;
+        if (canv === 0 && dig === 0) { canv = 1; dig = 1; }
+        capacityChart.data.labels = ['Canvassing', 'Digital'];
+        capacityChart.data.datasets[0].data = [canv, dig];
+        capacityChart.data.datasets[0].backgroundColor = ['#8A5CF6', '#4F8CFF'];
+        capacityChart.update();
+      }
+      var capVal = document.getElementById('capacityValue');
+      if (capVal && data.capacity) {
+        var total = data.capacity.total || 0;
+        var canvPct = data.capacity.canvassingPct || 0;
+        var digPct = data.capacity.digitalPct || 0;
+        if (total > 0) {
+          capVal.textContent = canvPct >= digPct ? canvPct + '% Canvassing' : digPct + '% Digital';
+        } else {
+          capVal.textContent = '—';
+        }
+      }
+
       // LIVE badges
-      addLiveBadge(document.querySelector('.metric-cards'), true);
+      document.querySelectorAll('.metric-card').forEach(function(card) { addLiveBadge(card, true); });
       addLiveBadge(document.querySelector('.sidebar-card'), true);
       addLiveBadge(document.querySelector('.filters-section'), true);
       addLiveBadge(document.querySelector('.graph-card'), true);
@@ -600,12 +696,9 @@
         kv['Date Range'] = (data.dateRange.start || '') + ' to ' + (data.dateRange.end || '');
         kv['Revenue'] = data.metrics.revenue;
         kv['Revenue Trend %'] = data.metrics.revPct;
-        kv['Leads'] = data.metrics.leads;
-        kv['Leads Trend %'] = data.metrics.leadPct;
-        kv['Meetings'] = data.metrics.meetings;
-        kv['Meetings Trend %'] = data.metrics.meetingPct;
-        kv['Deals'] = data.metrics.deals;
-        kv['Deals Trend %'] = data.metrics.dealPct;
+        kv['Leads Today'] = data.metrics.leads;
+        kv['Meetings Today'] = data.metrics.meetings;
+        kv['Contracts Today'] = data.metrics.deals;
         kv['Status - Closed'] = data.statusCounts.Closed || 0;
         kv['Status - Contacted'] = data.statusCounts.Contacted || 0;
         kv['Status - Cancelled'] = data.statusCounts.Cancelled || 0;
@@ -615,6 +708,11 @@
         kv['Partner Leads'] = data.marketingSummary.partnerLeads || 0;
         kv['Marketing Meetings'] = data.marketingSummary.meetings || 0;
         kv['Marketing Deals'] = data.marketingSummary.deals || 0;
+        if (data.capacity) {
+          kv['Capacity - Canvassing'] = data.capacity.canvassing;
+          kv['Capacity - Digital'] = data.capacity.digital;
+          kv['Capacity - Canvassing %'] = data.capacity.canvassingPct + '%';
+        }
         (data.leaderboard || []).forEach(function (r, i) {
           kv['Sales Rep #' + (i + 1)] = r.name + ': $' + (r.revenue || 0).toLocaleString();
         });
@@ -626,9 +724,9 @@
         });
       } else {
         kv['Revenue'] = document.getElementById('metricRevenue') ? document.getElementById('metricRevenue').textContent : '';
-        kv['Leads'] = document.getElementById('metricLeads') ? document.getElementById('metricLeads').textContent : '';
-        kv['Meetings'] = document.getElementById('metricMeetings') ? document.getElementById('metricMeetings').textContent : '';
-        kv['Deals'] = document.getElementById('metricDeals') ? document.getElementById('metricDeals').textContent : '';
+        kv['Leads Today'] = document.getElementById('metricLeads') ? document.getElementById('metricLeads').textContent : '';
+        kv['Meetings Today'] = document.getElementById('metricMeetings') ? document.getElementById('metricMeetings').textContent : '';
+        kv['Contracts Today'] = document.getElementById('metricDeals') ? document.getElementById('metricDeals').textContent : '';
         kv['Status - Closed'] = document.getElementById('statusClosed') ? document.getElementById('statusClosed').textContent : '';
         kv['Status - Contacted'] = document.getElementById('statusContacted') ? document.getElementById('statusContacted').textContent : '';
         kv['Status - Cancelled'] = document.getElementById('statusCancelled') ? document.getElementById('statusCancelled').textContent : '';
@@ -644,7 +742,7 @@
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = url;
-      a.download = 'CEO_Overview_Metrics_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.download = 'THI_CEO_Metrics_' + new Date().toISOString().slice(0, 10) + '.json';
       a.click();
       URL.revokeObjectURL(url);
       log('exportMetrics END downloaded');

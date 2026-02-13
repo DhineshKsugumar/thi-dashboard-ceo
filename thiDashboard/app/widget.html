@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CEO Overview</title>
+  <title>THI CEO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -736,7 +736,7 @@
   <div class="dashboard">
     <!-- 1. Header -->
     <header class="header">
-      <h1 class="header-title">CEO Overview</h1>
+      <h1 class="header-title">THI CEO</h1>
       <div class="header-controls">
         <select class="date-filter" id="dateFilter">
           <option value="today">Today</option>
@@ -744,10 +744,6 @@
           <option value="month" selected>This Month</option>
           <option value="custom">Custom</option>
         </select>
-        <div class="toggle-group">
-          <span class="toggle-label">Today Metrics</span>
-          <div class="toggle active" id="todayToggle" role="button" tabindex="0" aria-label="Toggle today metrics"></div>
-        </div>
         <button class="export-btn" id="exportBtn">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export
@@ -766,17 +762,17 @@
             <div class="metric-trend up" id="metricRevenueTrend">—</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Leads</div>
+            <div class="metric-label">Leads Today</div>
             <div class="metric-value" id="metricLeads">0</div>
             <div class="metric-trend up" id="metricLeadsTrend">—</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Meetings</div>
+            <div class="metric-label">Meetings Today</div>
             <div class="metric-value" id="metricMeetings">0</div>
             <div class="metric-trend up" id="metricMeetingsTrend">—</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Deals</div>
+            <div class="metric-label">Contracts Today</div>
             <div class="metric-value" id="metricDeals">0</div>
             <div class="metric-trend up" id="metricDealsTrend">—</div>
           </div>
@@ -810,9 +806,9 @@
         <div class="capacity-title">Overall Capacity</div>
         <div class="capacity-chart-wrap">
           <canvas id="capacityChart"></canvas>
-          <div class="capacity-value" id="capacityValue">78%</div>
+          <div class="capacity-value" id="capacityValue">—</div>
         </div>
-        <div class="capacity-label">Online / Available</div>
+        <div class="capacity-label">Canvassing / Digital</div>
       </div>
       <div class="filters-section">
         <span class="filters-label">Status filters</span>
@@ -890,11 +886,6 @@
   </div>
 
   <script>
-    // Toggle
-    document.getElementById('todayToggle').addEventListener('click', function() {
-      this.classList.toggle('active');
-    });
-
     // Status cards
     document.querySelectorAll('.status-card').forEach(card => {
       card.addEventListener('click', function() {
@@ -905,35 +896,35 @@
 
     // Date filter
     document.getElementById('dateFilter').addEventListener('change', function() {
-      console.log('[CEO] dateFilter changed to', this.value);
+      console.log('[THI CEO] dateFilter changed to', this.value);
       if (this.value !== 'custom') loadCEOData(this.value);
     });
 
     // Export
     document.getElementById('exportBtn').addEventListener('click', function() {
-      console.log('[CEO] exportBtn clicked');
+      console.log('[THI CEO] exportBtn clicked');
       if (typeof CEO_API !== 'undefined' && CEO_API.exportMetrics) {
         CEO_API.exportMetrics();
       }
     });
 
     async function loadCEOData(dateFilter) {
-      console.log('[CEO] loadCEOData START filter=', dateFilter);
+      console.log('[THI CEO] loadCEOData START filter=', dateFilter);
       if (typeof CEO_API === 'undefined') {
-        console.log('[CEO] loadCEOData SKIP - CEO_API undefined');
+        console.log('[THI CEO] loadCEOData SKIP - CEO_API undefined');
         return;
       }
       try {
         const data = await CEO_API.loadAll(dateFilter);
-        console.log('[CEO] loadCEOData loadAll returned', !!data);
+        console.log('[THI CEO] loadCEOData loadAll returned', !!data);
         if (data) {
           CEO_API.render(data);
-          console.log('[CEO] loadCEOData render done');
+          console.log('[THI CEO] loadCEOData render done');
         } else {
-          console.log('[CEO] loadCEOData no data to render');
+          console.log('[THI CEO] loadCEOData no data to render');
         }
       } catch (e) {
-        console.warn('[CEO] loadCEOData ERROR', e);
+        console.warn('[THI CEO] loadCEOData ERROR', e);
       }
     }
 
@@ -1031,18 +1022,15 @@
       }
     });
 
-    // Store chart ref for API updates
-    if (typeof CEO_API !== 'undefined') CEO_API.setCharts(window.kpiChartInstance, null);
-
-    // Capacity Donut Chart
+    // Capacity Donut Chart: Canvassing vs Digital (leads in selected period)
     const capacityCtx = document.getElementById('capacityChart').getContext('2d');
-    new Chart(capacityCtx, {
+    window.capacityChartInstance = new Chart(capacityCtx, {
       type: 'doughnut',
       data: {
-        labels: ['Online', 'Available'],
+        labels: ['Canvassing', 'Digital'],
         datasets: [{
-          data: [78, 22],
-          backgroundColor: ['#22C55E', 'rgba(156, 163, 175, 0.3)'],
+          data: [0, 0],
+          backgroundColor: ['#8A5CF6', '#4F8CFF'],
           borderWidth: 0,
           hoverOffset: 4,
         }]
@@ -1061,10 +1049,20 @@
             borderWidth: 1,
             padding: 12,
             cornerRadius: 12,
+            callbacks: {
+              label: function(ctx) {
+                var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                var pct = total > 0 ? Math.round(ctx.raw / total * 100) : 0;
+                return ctx.label + ': ' + ctx.raw + ' leads (' + pct + '%)';
+              }
+            }
           }
         }
       }
     });
+
+    // Store chart refs for API updates
+    if (typeof CEO_API !== 'undefined') CEO_API.setCharts(window.kpiChartInstance, window.capacityChartInstance);
 
     // Init: when embedded in Zoho, SDK loads dynamically and we init. When standalone, show demo.
     function isZohoEmbedded() {
@@ -1076,33 +1074,33 @@
     }
 
     function tryZohoInit() {
-      console.log('[CEO] tryZohoInit');
+      console.log('[THI CEO] tryZohoInit');
       if (typeof ZOHO === 'undefined' || !ZOHO.embeddedApp) {
-        console.log('[CEO] tryZohoInit SKIP - ZOHO not ready');
+        console.log('[THI CEO] tryZohoInit SKIP - ZOHO not ready');
         return false;
       }
       try {
         ZOHO.embeddedApp.on('PageLoad', async function() {
-          console.log('[CEO] Zoho PageLoad fired');
+          console.log('[THI CEO] Zoho PageLoad fired');
           if (typeof CEO_API !== 'undefined') {
             try {
               var ok = await CEO_API.init();
-              console.log('[CEO] Zoho init ok=', ok);
+              console.log('[THI CEO] Zoho init ok=', ok);
               if (ok) await loadCEOData(document.getElementById('dateFilter').value);
-            } catch (e) { console.warn('[CEO] Zoho init error:', e); }
+            } catch (e) { console.warn('[THI CEO] Zoho init error:', e); }
           }
         });
         ZOHO.embeddedApp.init();
-        console.log('[CEO] ZOHO.embeddedApp.init() called');
+        console.log('[THI CEO] ZOHO.embeddedApp.init() called');
         return true;
       } catch (e) {
-        console.warn('[CEO] Zoho SDK init failed:', e.message);
+        console.warn('[THI CEO] Zoho SDK init failed:', e.message);
         return false;
       }
     }
 
     function showDemoData() {
-      console.log('[CEO] showDemoData');
+      console.log('[THI CEO] showDemoData');
       document.getElementById('metricRevenue').textContent = '$124.5K';
       document.getElementById('metricLeads').textContent = '342';
       document.getElementById('metricMeetings').textContent = '89';
@@ -1113,30 +1111,30 @@
     // Wait for SDK if embedded, then init or show demo
     (function waitAndInit(attempts) {
       attempts = attempts || 0;
-      console.log('[CEO] waitAndInit attempt=', attempts, 'embedded=', isZohoEmbedded());
+      console.log('[THI CEO] waitAndInit attempt=', attempts, 'embedded=', isZohoEmbedded());
       if (isZohoEmbedded()) {
         if ((window.CEO_ZohoReady || typeof ZOHO !== 'undefined') && tryZohoInit()) {
-          console.log('[CEO] waitAndInit Zoho init success');
+          console.log('[THI CEO] waitAndInit Zoho init success');
           return;
         }
         if (attempts < 50) setTimeout(function() { waitAndInit(attempts + 1); }, 100);
         else {
-          console.log('[CEO] waitAndInit timeout, showing demo');
+          console.log('[THI CEO] waitAndInit timeout, showing demo');
           showDemoData();
         }
         return;
       }
       // Standalone: try init (SDK may be cached), else demo
       setTimeout(async function() {
-        console.log('[CEO] waitAndInit standalone path');
+        console.log('[THI CEO] waitAndInit standalone path');
         if (typeof CEO_API !== 'undefined') {
           var ok = false;
-          try { ok = await CEO_API.init(); } catch (e) { console.log('[CEO] standalone init error', e); }
-          console.log('[CEO] standalone init ok=', ok);
+          try { ok = await CEO_API.init(); } catch (e) { console.log('[THI CEO] standalone init error', e); }
+          console.log('[THI CEO] standalone init ok=', ok);
           if (ok) loadCEOData(document.getElementById('dateFilter').value);
           else showDemoData();
         } else {
-          console.log('[CEO] CEO_API undefined, showDemoData');
+          console.log('[THI CEO] CEO_API undefined, showDemoData');
           showDemoData();
         }
       }, 500);
