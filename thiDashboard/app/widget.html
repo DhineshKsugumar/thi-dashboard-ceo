@@ -8,6 +8,21 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="ceo-api.js"></script>
+  <script>
+    // Load Zoho SDK only when embedded in iframe (avoids "Parentwindow reference not found" when opened directly)
+    window.CEO_ZohoReady = false;
+    (function() {
+      try {
+        if (window.self !== window.top) {
+          var s = document.createElement('script');
+          s.src = 'https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js';
+          s.onload = function() { window.CEO_ZohoReady = true; };
+          document.head.appendChild(s);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <style>
     :root {
       --bg: #0F1117;
@@ -197,7 +212,10 @@
       grid-template-columns: repeat(4, 1fr);
       gap: 16px;
       flex-shrink: 0;
+      position: relative;
     }
+
+    .filters-section { position: relative; }
 
     .metric-card {
       padding: 20px;
@@ -274,8 +292,14 @@
     .graph-title {
       font-size: 16px;
       font-weight: 600;
-      margin-bottom: 24px;
+      margin-bottom: 8px;
       color: var(--text-primary);
+    }
+
+    .graph-headline {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
     }
 
     .graph-container {
@@ -295,6 +319,7 @@
       display: flex;
       flex-direction: column;
       transition: all 200ms ease;
+      position: relative;
     }
 
     .sidebar-card:hover {
@@ -520,6 +545,7 @@
       transition: all 200ms ease;
       display: flex;
       flex-direction: column;
+      position: relative;
     }
 
     .table-card .marketing-cards-grid {
@@ -631,6 +657,26 @@
     .marketing-card-sub.positive { color: var(--success); }
     .marketing-card-sub.negative { color: var(--danger); }
 
+    /* LIVE badge */
+    .live-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 4px 8px;
+      background: linear-gradient(135deg, var(--success), #16a34a);
+      color: white;
+      border-radius: 6px;
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
+      animation: live-pulse 2s ease-in-out infinite;
+    }
+    @keyframes live-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.85; }
+    }
+
     /* Icons - inline SVG */
     .icon {
       width: 18px;
@@ -692,17 +738,17 @@
     <header class="header">
       <h1 class="header-title">CEO Overview</h1>
       <div class="header-controls">
-        <select class="date-filter">
-          <option>Today</option>
-          <option>This Week</option>
-          <option selected>This Month</option>
-          <option>Custom</option>
+        <select class="date-filter" id="dateFilter">
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month" selected>This Month</option>
+          <option value="custom">Custom</option>
         </select>
         <div class="toggle-group">
           <span class="toggle-label">Today Metrics</span>
           <div class="toggle active" id="todayToggle" role="button" tabindex="0" aria-label="Toggle today metrics"></div>
         </div>
-        <button class="export-btn">
+        <button class="export-btn" id="exportBtn">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export
         </button>
@@ -716,29 +762,30 @@
         <div class="metric-cards">
           <div class="metric-card">
             <div class="metric-label">Revenue</div>
-            <div class="metric-value">$124.5K</div>
-            <div class="metric-trend up">↑ 12% vs last month</div>
+            <div class="metric-value" id="metricRevenue">$0</div>
+            <div class="metric-trend up" id="metricRevenueTrend">—</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Leads</div>
-            <div class="metric-value">342</div>
-            <div class="metric-trend up">↑ 8% vs last month</div>
+            <div class="metric-value" id="metricLeads">0</div>
+            <div class="metric-trend up" id="metricLeadsTrend">—</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Meetings</div>
-            <div class="metric-value">89</div>
-            <div class="metric-trend down">↓ 3% vs last month</div>
+            <div class="metric-value" id="metricMeetings">0</div>
+            <div class="metric-trend up" id="metricMeetingsTrend">—</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Deals</div>
-            <div class="metric-value">24</div>
-            <div class="metric-trend up">↑ 18% vs last month</div>
+            <div class="metric-value" id="metricDeals">0</div>
+            <div class="metric-trend up" id="metricDealsTrend">—</div>
           </div>
         </div>
 
         <!-- Main graph -->
         <div class="graph-card">
           <div class="graph-title">Current month vs Previous month</div>
+          <div class="graph-headline" id="chartHeadline">Contract revenue: current month projected | previous month actual</div>
           <div class="graph-container">
             <canvas id="kpiChart"></canvas>
           </div>
@@ -751,57 +798,8 @@
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
           🏆 Sales Rep Ranking
         </h2>
-        <div class="leaderboard-list">
-          <div class="leaderboard-item top">
-            <span class="leaderboard-rank">1</span>
-            <div class="leaderboard-avatar">JD</div>
-            <div class="leaderboard-info">
-              <div class="leaderboard-name">James Davis</div>
-              <div class="leaderboard-value">$42K revenue</div>
-              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 95%"></div></div>
-            </div>
-            <span class="leaderboard-trend up">↑</span>
-          </div>
-          <div class="leaderboard-item">
-            <span class="leaderboard-rank">2</span>
-            <div class="leaderboard-avatar">SK</div>
-            <div class="leaderboard-info">
-              <div class="leaderboard-name">Sarah Kim</div>
-              <div class="leaderboard-value">$38K revenue</div>
-              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 82%"></div></div>
-            </div>
-            <span class="leaderboard-trend up">↑</span>
-          </div>
-          <div class="leaderboard-item">
-            <span class="leaderboard-rank">3</span>
-            <div class="leaderboard-avatar">MR</div>
-            <div class="leaderboard-info">
-              <div class="leaderboard-name">Mike Roberts</div>
-              <div class="leaderboard-value">$31K revenue</div>
-              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 68%"></div></div>
-            </div>
-            <span class="leaderboard-trend down">↓</span>
-          </div>
-          <div class="leaderboard-item">
-            <span class="leaderboard-rank">4</span>
-            <div class="leaderboard-avatar">AL</div>
-            <div class="leaderboard-info">
-              <div class="leaderboard-name">Amy Lee</div>
-              <div class="leaderboard-value">$28K revenue</div>
-              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 61%"></div></div>
-            </div>
-            <span class="leaderboard-trend up">↑</span>
-          </div>
-          <div class="leaderboard-item">
-            <span class="leaderboard-rank">5</span>
-            <div class="leaderboard-avatar">TW</div>
-            <div class="leaderboard-info">
-              <div class="leaderboard-name">Tom Wilson</div>
-              <div class="leaderboard-value">$24K revenue</div>
-              <div class="leaderboard-progress"><div class="leaderboard-progress-fill" style="width: 52%"></div></div>
-            </div>
-            <span class="leaderboard-trend down">↓</span>
-          </div>
+        <div class="leaderboard-list" id="leaderboardList">
+          <div class="leaderboard-item"><span class="leaderboard-rank">—</span><div class="leaderboard-avatar">—</div><div class="leaderboard-info"><div class="leaderboard-name">Loading...</div><div class="leaderboard-value">—</div></div></div>
         </div>
       </aside>
     </div>
@@ -821,23 +819,23 @@
         <div class="status-cards">
           <div class="status-card active">
             <span class="status-card-label">Closed</span>
-            <span class="status-card-value">42</span>
+            <span class="status-card-value" id="statusClosed">0</span>
           </div>
           <div class="status-card">
             <span class="status-card-label">Contacted</span>
-            <span class="status-card-value">28</span>
+            <span class="status-card-value" id="statusContacted">0</span>
           </div>
           <div class="status-card">
             <span class="status-card-label">Cancelled</span>
-            <span class="status-card-value">12</span>
+            <span class="status-card-value" id="statusCancelled">0</span>
           </div>
           <div class="status-card">
             <span class="status-card-label">No Show</span>
-            <span class="status-card-value">8</span>
+            <span class="status-card-value" id="statusNoShow">0</span>
           </div>
           <div class="status-card">
             <span class="status-card-label">Initially</span>
-            <span class="status-card-value">15</span>
+            <span class="status-card-value" id="statusInitially">0</span>
           </div>
         </div>
       </div>
@@ -857,11 +855,8 @@
                 <th>Deals</th>
               </tr>
             </thead>
-            <tbody>
-              <tr><td>Brand A</td><td>124</td><td>32</td><td>8</td></tr>
-              <tr><td>Brand B</td><td>98</td><td>28</td><td>6</td></tr>
-              <tr><td>Brand C</td><td>76</td><td>18</td><td>5</td></tr>
-              <tr><td>Brand D</td><td>44</td><td>11</td><td>5</td></tr>
+            <tbody id="brandTableBody">
+              <tr><td colspan="4">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -871,23 +866,23 @@
         <div class="marketing-cards-grid">
           <div class="marketing-card">
             <div class="marketing-card-label">Marketing Leads</div>
-            <div class="marketing-card-value accent-blue">198</div>
-            <div class="marketing-card-sub positive">↑ 14% vs last month</div>
+            <div class="marketing-card-value accent-blue" id="marketingLeadsVal">0</div>
+            <div class="marketing-card-sub positive">↑ vs last period</div>
           </div>
           <div class="marketing-card">
             <div class="marketing-card-label">Partner Leads</div>
-            <div class="marketing-card-value accent-violet">144</div>
-            <div class="marketing-card-sub positive">↑ 9% vs last month</div>
+            <div class="marketing-card-value accent-violet" id="partnerLeadsVal">0</div>
+            <div class="marketing-card-sub positive">↑ vs last period</div>
           </div>
           <div class="marketing-card">
             <div class="marketing-card-label">Meetings</div>
-            <div class="marketing-card-value accent-teal">89</div>
-            <div class="marketing-card-sub positive">↑ 6% vs last month</div>
+            <div class="marketing-card-value accent-teal" id="marketingMeetingsVal">0</div>
+            <div class="marketing-card-sub positive">↑ vs last period</div>
           </div>
           <div class="marketing-card">
             <div class="marketing-card-label">Deals</div>
-            <div class="marketing-card-value accent-green">24</div>
-            <div class="marketing-card-sub positive">↑ 18% vs last month</div>
+            <div class="marketing-card-value accent-green" id="marketingDealsVal">0</div>
+            <div class="marketing-card-sub positive">↑ vs last period</div>
           </div>
         </div>
       </div>
@@ -908,6 +903,40 @@
       });
     });
 
+    // Date filter
+    document.getElementById('dateFilter').addEventListener('change', function() {
+      console.log('[CEO] dateFilter changed to', this.value);
+      if (this.value !== 'custom') loadCEOData(this.value);
+    });
+
+    // Export
+    document.getElementById('exportBtn').addEventListener('click', function() {
+      console.log('[CEO] exportBtn clicked');
+      if (typeof CEO_API !== 'undefined' && CEO_API.exportMetrics) {
+        CEO_API.exportMetrics();
+      }
+    });
+
+    async function loadCEOData(dateFilter) {
+      console.log('[CEO] loadCEOData START filter=', dateFilter);
+      if (typeof CEO_API === 'undefined') {
+        console.log('[CEO] loadCEOData SKIP - CEO_API undefined');
+        return;
+      }
+      try {
+        const data = await CEO_API.loadAll(dateFilter);
+        console.log('[CEO] loadCEOData loadAll returned', !!data);
+        if (data) {
+          CEO_API.render(data);
+          console.log('[CEO] loadCEOData render done');
+        } else {
+          console.log('[CEO] loadCEOData no data to render');
+        }
+      } catch (e) {
+        console.warn('[CEO] loadCEOData ERROR', e);
+      }
+    }
+
     // KPI Line Chart
     const kpiCtx = document.getElementById('kpiChart').getContext('2d');
     const gradient = kpiCtx.createLinearGradient(0, 0, 0, 280);
@@ -915,18 +944,19 @@
     gradient.addColorStop(0.5, 'rgba(79, 140, 255, 0.1)');
     gradient.addColorStop(1, 'rgba(79, 140, 255, 0)');
 
-    const days = Array.from({ length: 30 }, (_, i) => `Day ${i + 1}`);
-    const currentMonthData = [12, 18, 22, 28, 35, 42, 48, 55, 62, 58, 65, 72, 78, 85, 82, 88, 92, 95, 98, 102, 108, 112, 118, 115, 120, 125, 130, 128, 132, 138];
-    const previousMonthData = [10, 14, 18, 22, 26, 30, 35, 38, 42, 40, 45, 50, 55, 58, 56, 60, 64, 68, 70, 72, 75, 78, 80, 78, 82, 85, 88, 86, 90, 92];
+    var daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    var days = Array.from({ length: daysInMonth }, function(_, i) { return 'Day ' + (i + 1); });
+    var placeholderCurrent = Array.from({ length: daysInMonth }, function(_, i) { return 0; });
+    var placeholderPrev = Array.from({ length: daysInMonth }, function(_, i) { return 0; });
 
-    new Chart(kpiCtx, {
+    window.kpiChartInstance = new Chart(kpiCtx, {
       type: 'line',
       data: {
         labels: days,
         datasets: [
           {
-            label: 'Current month',
-            data: currentMonthData,
+            label: 'Current month (projected from contracts)',
+            data: placeholderCurrent,
             borderColor: '#4F8CFF',
             backgroundColor: gradient,
             borderWidth: 2,
@@ -939,8 +969,8 @@
             pointHoverBorderWidth: 2,
           },
           {
-            label: 'Previous month',
-            data: previousMonthData,
+            label: 'Previous month (contract revenue from Deals)',
+            data: placeholderPrev,
             borderColor: 'rgba(156, 163, 175, 0.6)',
             borderDash: [6, 4],
             borderWidth: 2,
@@ -978,6 +1008,11 @@
             padding: 12,
             cornerRadius: 12,
             displayColors: true,
+            callbacks: {
+              label: function(ctx) {
+                return ctx.dataset.label + ': $' + (ctx.raw || 0).toLocaleString();
+              }
+            }
           }
         },
         scales: {
@@ -987,11 +1022,17 @@
           },
           y: {
             grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: { color: '#9CA3AF' }
+            ticks: {
+              color: '#9CA3AF',
+              callback: function(v) { return '$' + (v >= 1000 ? (v/1000) + 'K' : v); }
+            }
           }
         }
       }
     });
+
+    // Store chart ref for API updates
+    if (typeof CEO_API !== 'undefined') CEO_API.setCharts(window.kpiChartInstance, null);
 
     // Capacity Donut Chart
     const capacityCtx = document.getElementById('capacityChart').getContext('2d');
@@ -1024,6 +1065,82 @@
         }
       }
     });
+
+    // Init: when embedded in Zoho, SDK loads dynamically and we init. When standalone, show demo.
+    function isZohoEmbedded() {
+      try {
+        return window.self !== window.top;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function tryZohoInit() {
+      console.log('[CEO] tryZohoInit');
+      if (typeof ZOHO === 'undefined' || !ZOHO.embeddedApp) {
+        console.log('[CEO] tryZohoInit SKIP - ZOHO not ready');
+        return false;
+      }
+      try {
+        ZOHO.embeddedApp.on('PageLoad', async function() {
+          console.log('[CEO] Zoho PageLoad fired');
+          if (typeof CEO_API !== 'undefined') {
+            try {
+              var ok = await CEO_API.init();
+              console.log('[CEO] Zoho init ok=', ok);
+              if (ok) await loadCEOData(document.getElementById('dateFilter').value);
+            } catch (e) { console.warn('[CEO] Zoho init error:', e); }
+          }
+        });
+        ZOHO.embeddedApp.init();
+        console.log('[CEO] ZOHO.embeddedApp.init() called');
+        return true;
+      } catch (e) {
+        console.warn('[CEO] Zoho SDK init failed:', e.message);
+        return false;
+      }
+    }
+
+    function showDemoData() {
+      console.log('[CEO] showDemoData');
+      document.getElementById('metricRevenue').textContent = '$124.5K';
+      document.getElementById('metricLeads').textContent = '342';
+      document.getElementById('metricMeetings').textContent = '89';
+      document.getElementById('metricDeals').textContent = '24';
+      document.getElementById('leaderboardList').innerHTML = '<div class="leaderboard-item"><span class="leaderboard-rank">1</span><div class="leaderboard-avatar">—</div><div class="leaderboard-info"><div class="leaderboard-name">Demo mode (open in Zoho CRM for live data)</div><div class="leaderboard-value">—</div></div></div>';
+    }
+
+    // Wait for SDK if embedded, then init or show demo
+    (function waitAndInit(attempts) {
+      attempts = attempts || 0;
+      console.log('[CEO] waitAndInit attempt=', attempts, 'embedded=', isZohoEmbedded());
+      if (isZohoEmbedded()) {
+        if ((window.CEO_ZohoReady || typeof ZOHO !== 'undefined') && tryZohoInit()) {
+          console.log('[CEO] waitAndInit Zoho init success');
+          return;
+        }
+        if (attempts < 50) setTimeout(function() { waitAndInit(attempts + 1); }, 100);
+        else {
+          console.log('[CEO] waitAndInit timeout, showing demo');
+          showDemoData();
+        }
+        return;
+      }
+      // Standalone: try init (SDK may be cached), else demo
+      setTimeout(async function() {
+        console.log('[CEO] waitAndInit standalone path');
+        if (typeof CEO_API !== 'undefined') {
+          var ok = false;
+          try { ok = await CEO_API.init(); } catch (e) { console.log('[CEO] standalone init error', e); }
+          console.log('[CEO] standalone init ok=', ok);
+          if (ok) loadCEOData(document.getElementById('dateFilter').value);
+          else showDemoData();
+        } else {
+          console.log('[CEO] CEO_API undefined, showDemoData');
+          showDemoData();
+        }
+      }, 500);
+    })();
   </script>
 </body>
 </html>
